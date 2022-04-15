@@ -15,6 +15,17 @@ import (
 // Changing data while traversing with a cursor may cause it to be invalidated
 // and return unexpected keys and/or values. You must reposition your cursor
 // after mutating data.
+//游标代表一个迭代器，它可以按排序顺序遍历存储桶中的所有键/值对。
+//游标看到 value == nil 的嵌套桶。
+//游标可以从交易中获取，只要交易打开就有效。
+
+//从游标返回的键和值仅在事务的生命周期内有效。
+
+//用游标遍历时改变数据可能会导致它失效
+//并返回意外的键和/或值。您必须重新定位光标
+//在改变数据之后。
+
+// Cursor 通过游标遍历指定的 bucket中的key/value对。
 type Cursor struct {
 	bucket *Bucket
 	stack  []elemRef
@@ -28,6 +39,9 @@ func (c *Cursor) Bucket() *Bucket {
 // First moves the cursor to the first item in the bucket and returns its key and value.
 // If the bucket is empty then a nil key and value are returned.
 // The returned key and value are only valid for the life of the transaction.
+//首先将光标移动到存储桶中的第一项并返回其键和值。
+//如果桶为空，则返回一个 nil 键和值。
+//返回的键和值只在事务的生命周期内有效。
 func (c *Cursor) First() (key []byte, value []byte) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 	c.stack = c.stack[:0]
@@ -151,10 +165,13 @@ func (c *Cursor) Delete() error {
 
 // seek moves the cursor to a given key and returns it.
 // If the key does not exist then the next key is used.
+// seek 将光标移动到给定键并返回它。
+// 如果key不存在，则使用下一个key
 func (c *Cursor) seek(seek []byte) (key []byte, value []byte, flags uint32) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 
 	// Start from root page/node and traverse to correct page.
+	// 从根页面/节点开始并遍历到正确的页面。
 	c.stack = c.stack[:0]
 	c.search(seek, c.bucket.root)
 	ref := &c.stack[len(c.stack)-1]
@@ -250,7 +267,9 @@ func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
 }
 
 // search recursively performs a binary search against a given page/node until it finds a given key.
+// search 递归地对给定的页面/节点执行二进制搜索，直到找到给定的键。
 func (c *Cursor) search(key []byte, pgid pgid) {
+	// 通过pageid读取对应page和node的信息
 	p, n := c.bucket.pageNode(pgid)
 	if p != nil && (p.flags&(branchPageFlag|leafPageFlag)) == 0 {
 		panic(fmt.Sprintf("invalid page type: %d: %x", p.id, p.flags))
@@ -259,6 +278,7 @@ func (c *Cursor) search(key []byte, pgid pgid) {
 	c.stack = append(c.stack, e)
 
 	// If we're on a leaf page/node then find the specific node.
+	// 如果我们在叶子页面/节点上，则找到特定节点。
 	if e.isLeaf() {
 		c.nsearch(key)
 		return
@@ -315,6 +335,7 @@ func (c *Cursor) searchPage(key []byte, p *page) {
 }
 
 // nsearch searches the leaf node on the top of the stack for a key.
+// nsearch 在堆栈顶部的叶节点中搜索键。
 func (c *Cursor) nsearch(key []byte) {
 	e := &c.stack[len(c.stack)-1]
 	p, n := e.page, e.node
@@ -337,6 +358,7 @@ func (c *Cursor) nsearch(key []byte) {
 }
 
 // keyValue returns the key and value of the current leaf element.
+// keyValue 返回当前叶元素的键和值。
 func (c *Cursor) keyValue() ([]byte, []byte, uint32) {
 	ref := &c.stack[len(c.stack)-1]
 	if ref.count() == 0 || ref.index >= ref.count() {
@@ -355,6 +377,7 @@ func (c *Cursor) keyValue() ([]byte, []byte, uint32) {
 }
 
 // node returns the node that the cursor is currently positioned on.
+// node 返回光标当前所在的节点。
 func (c *Cursor) node() *node {
 	_assert(len(c.stack) > 0, "accessing a node with a zero-length cursor stack")
 
@@ -377,6 +400,7 @@ func (c *Cursor) node() *node {
 }
 
 // elemRef represents a reference to an element on a given page/node.
+// elemRef 表示对给定页面/节点上的元素的引用。
 type elemRef struct {
 	page  *page
 	node  *node
@@ -384,6 +408,7 @@ type elemRef struct {
 }
 
 // isLeaf returns whether the ref is pointing at a leaf page/node.
+// isLeaf 返回 ref 是否指向叶子页面/节点。
 func (r *elemRef) isLeaf() bool {
 	if r.node != nil {
 		return r.node.isLeaf
@@ -392,6 +417,7 @@ func (r *elemRef) isLeaf() bool {
 }
 
 // count returns the number of inodes or page elements.
+// count 返回 inode 或页面元素的数量。
 func (r *elemRef) count() int {
 	if r.node != nil {
 		return len(r.node.inodes)

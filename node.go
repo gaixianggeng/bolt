@@ -7,7 +7,9 @@ import (
 	"unsafe"
 )
 
+// node节点 基础结构
 // node represents an in-memory, deserialized page.
+// 节点表示内存中反序列化的页面。
 type node struct {
 	bucket     *Bucket
 	isLeaf     bool
@@ -336,6 +338,8 @@ func (n *node) splitIndex(threshold int) (index, sz int) {
 
 // spill writes the nodes to dirty pages and splits nodes as it goes.
 // Returns an error if dirty pages cannot be allocated.
+// 溢出将节点写入脏页并在执行过程中拆分节点。
+// 如果无法分配脏页，则返回错误。
 func (n *node) spill() error {
 	var tx = n.bucket.tx
 	if n.spilled {
@@ -406,6 +410,7 @@ func (n *node) spill() error {
 
 // rebalance attempts to combine the node with sibling nodes if the node fill
 // size is below a threshold or if there are not enough keys.
+//如果节点填充大小低于阈值或没有足够的键，rebalance 会尝试将该节点与兄弟节点组合。
 func (n *node) rebalance() {
 	if !n.unbalanced {
 		return
@@ -520,6 +525,8 @@ func (n *node) removeChild(target *node) {
 
 // dereference causes the node to copy all its inode key/value references to heap memory.
 // This is required when the mmap is reallocated so inodes are not pointing to stale data.
+//取消引用导致节点将其所有 inode 键/值引用复制到堆内存。
+//这在重新分配 mmap 时是必需的，因此 inode 不会指向过时的数据。
 func (n *node) dereference() {
 	if n.key != nil {
 		key := make([]byte, len(n.key))
@@ -587,13 +594,17 @@ func (n *node) dump() {
 
 type nodes []*node
 
-func (s nodes) Len() int           { return len(s) }
-func (s nodes) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[j].inodes[0].key) == -1 }
+func (s nodes) Len() int      { return len(s) }
+func (s nodes) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s nodes) Less(i, j int) bool {
+	return bytes.Compare(s[i].inodes[0].key, s[j].inodes[0].key) == -1
+}
 
 // inode represents an internal node inside of a node.
-// It can be used to point to elements in a page or point
-// to an element which hasn't been added to a page yet.
+// It can be used to point to elements in a page or point to an element which hasn't been added to a page yet.
+// inode 表示节点内部的内部节点。
+// 可用于指向页面中的元素或指向尚未添加到页面中的元素。
+
 type inode struct {
 	flags uint32
 	pgid  pgid

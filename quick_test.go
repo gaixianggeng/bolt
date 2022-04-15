@@ -29,7 +29,9 @@ func init() {
 	flag.IntVar(&qmaxitems, "quick.maxitems", 1000, "")
 	flag.IntVar(&qmaxksize, "quick.maxksize", 1024, "")
 	flag.IntVar(&qmaxvsize, "quick.maxvsize", 1024, "")
-	flag.Parse()
+	if !flag.Parsed() {
+		flag.Parse()
+	}
 	fmt.Fprintln(os.Stderr, "seed:", qseed)
 	fmt.Fprintf(os.Stderr, "quick settings: count=%v, items=%v, ksize=%v, vsize=%v\n", qcount, qmaxitems, qmaxksize, qmaxvsize)
 }

@@ -33,19 +33,24 @@ const (
 const DefaultFillPercent = 0.5
 
 // Bucket represents a collection of key/value pairs inside the database.
+// Bucket 表示数据库中键/值对的集合。
 type Bucket struct {
 	*bucket
-	tx       *Tx                // the associated transaction
-	buckets  map[string]*Bucket // subbucket cache
-	page     *page              // inline page reference
-	rootNode *node              // materialized node for the root page.
-	nodes    map[pgid]*node     // node cache
+	tx       *Tx                // the associated transaction // 关联的事务
+	buckets  map[string]*Bucket // subbucket cache // 子桶缓存
+	page     *page              // inline page reference // 内联页引用
+	rootNode *node              // materialized node for the root page. // //根页面的物化节点。
+	nodes    map[pgid]*node     // node cache // 节点缓存
 
 	// Sets the threshold for filling nodes when they split. By default,
-	// the bucket will fill to 50% but it can be useful to increase this
-	// amount if you know that your write workloads are mostly append-only.
+	// the bucket will fill to 50% but it can be useful to increase this amount
+	// if you know that your write workloads are mostly append-only.
 	//
 	// This is non-persisted across transactions so it must be set in every Tx.
+	// 设置节点分裂时填充节点的阈值。默认情况下，
+	// 存储桶将填充到 50%，但如果您知道您的写入工作负载大部分是仅追加的，则增加此数量会很有用。
+	//
+	//这不是跨事务持久化的，因此必须在每个 Tx 中设置。
 	FillPercent float64
 }
 
@@ -53,9 +58,13 @@ type Bucket struct {
 // This is stored as the "value" of a bucket key. If the bucket is small enough,
 // then its root page can be stored inline in the "value", after the bucket
 // header. In the case of inline buckets, the "root" will be 0.
+//bucket 表示存储桶的文件表示。
+//这被存储为存储桶键的“值”。如果桶足够小，
+//那么它的根页面可以内联存储在“值”中，在桶之后
+//标题。对于内联存储桶，“根”将为 0。
 type bucket struct {
-	root     pgid   // page id of the bucket's root-level page
-	sequence uint64 // monotonically incrementing, used by NextSequence()
+	root     pgid   // page id of the bucket's root-level page // 桶的根页面的页面 id
+	sequence uint64 // monotonically incrementing, used by NextSequence() // 单调递增，由 NextSequence() 使用
 }
 
 // newBucket returns a new bucket associated with a transaction.
@@ -86,6 +95,9 @@ func (b *Bucket) Writable() bool {
 // Cursor creates a cursor associated with the bucket.
 // The cursor is only valid as long as the transaction is open.
 // Do not use a cursor after the transaction is closed.
+// 游标创建与存储桶关联的游标。
+// 游标仅在事务打开时才有效。
+// 事务关闭后不要使用游标。
 func (b *Bucket) Cursor() *Cursor {
 	// Update transaction statistics.
 	b.tx.stats.CursorCount++
@@ -100,6 +112,9 @@ func (b *Bucket) Cursor() *Cursor {
 // Bucket retrieves a nested bucket by name.
 // Returns nil if the bucket does not exist.
 // The bucket instance is only valid for the lifetime of the transaction.
+//Bucket 按名称检索嵌套的存储桶。
+//如果存储桶不存在，则返回 nil。
+//存储桶实例仅在事务的生命周期内有效。
 func (b *Bucket) Bucket(name []byte) *Bucket {
 	if b.buckets != nil {
 		if child := b.buckets[string(name)]; child != nil {
@@ -158,6 +173,9 @@ func (b *Bucket) openBucket(value []byte) *Bucket {
 // CreateBucket creates a new bucket at the given key and returns the new bucket.
 // Returns an error if the key already exists, if the bucket name is blank, or if the bucket name is too long.
 // The bucket instance is only valid for the lifetime of the transaction.
+// CreateBucket 在给定的键处创建一个新的存储桶并返回新的存储桶。
+// 如果键已存在、存储桶名称为空或存储桶名称太长，则返回错误。
+// 存储桶实例仅在事务的生命周期内有效。
 func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 	if b.tx.db == nil {
 		return nil, ErrTxClosed
@@ -202,6 +220,7 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 // CreateBucketIfNotExists creates a new bucket if it doesn't already exist and returns a reference to it.
 // Returns an error if the bucket name is blank, or if the bucket name is too long.
 // The bucket instance is only valid for the lifetime of the transaction.
+// 跟上面区别是如果存在则返回对应bucket,上面是报错，返回nil
 func (b *Bucket) CreateBucketIfNotExists(key []byte) (*Bucket, error) {
 	child, err := b.CreateBucket(key)
 	if err == ErrBucketExists {
@@ -282,6 +301,10 @@ func (b *Bucket) Get(key []byte) []byte {
 // If the key exist then its previous value will be overwritten.
 // Supplied value must remain valid for the life of the transaction.
 // Returns an error if the bucket was created from a read-only transaction, if the key is blank, if the key is too large, or if the value is too large.
+//Put 设置存储桶中键的值。
+//如果key存在，则其先前的值将被覆盖。
+//提供的value必须在事务期间保持有效。
+//如果存储桶是从只读事务创建的、键为空、键太大或值太大，则返回错误。
 func (b *Bucket) Put(key []byte, value []byte) error {
 	if b.tx.db == nil {
 		return ErrTxClosed
@@ -296,10 +319,13 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 	}
 
 	// Move cursor to correct position.
+	// 将光标移动到正确的位置。
+	// 存在的话 返回key的位置，不存在的话 seek到应该插入的位置
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
 
 	// Return an error if there is an existing key with a bucket value.
+	// 存在key，但是key和bucket的key相同 return err
 	if bytes.Equal(key, k) && (flags&bucketLeafFlag) != 0 {
 		return ErrIncompatibleValue
 	}
@@ -702,6 +728,8 @@ func (b *Bucket) dereference() {
 
 // pageNode returns the in-memory node, if it exists.
 // Otherwise returns the underlying page.
+// pageNode 返回内存中的节点（如果存在）。
+// 否则返回底层页面。
 func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	// Inline buckets have a fake page embedded in their value so treat them
 	// differently. We'll return the rootNode (if available) or the fake page.
@@ -723,10 +751,12 @@ func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	}
 
 	// Finally lookup the page from the transaction if no node is materialized.
+	// 如果没有具体化节点，最后从事务中查找页面。
 	return b.tx.page(id), nil
 }
 
 // BucketStats records statistics about resources used by a bucket.
+// BucketStats 记录桶使用的资源的统计信息。
 type BucketStats struct {
 	// Page count statistics.
 	BranchPageN     int // number of logical branch pages

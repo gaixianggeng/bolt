@@ -42,11 +42,15 @@ var defaultPageSize = os.Getpagesize()
 // DB represents a collection of buckets persisted to a file on disk.
 // All data access is performed through transactions which can be obtained through the DB.
 // All the functions on DB will return a ErrDatabaseNotOpen if accessed before Open() is called.
+//DB 表示持久化到磁盘上文件的存储桶集合。
+//所有数据访问都是通过可以通过数据库获得的事务来执行的。
+//如果在调用 Open() 之前访问，DB 上的所有函数都将返回 ErrDatabaseNotOpen。
 type DB struct {
 	// When enabled, the database will perform a Check() after every commit.
 	// A panic is issued if the database is in an inconsistent state. This
 	// flag has a large performance impact so it should only be used for
 	// debugging purposes.
+	// 严格模式
 	StrictMode bool
 
 	// Setting the NoSync flag will cause the database to skip fsync()
@@ -147,6 +151,9 @@ func (db *DB) String() string {
 // Open creates and opens a database at the given path.
 // If the file does not exist then it will be created automatically.
 // Passing in nil options will cause Bolt to open the database with the default options.
+//Open 在给定路径创建并打开一个数据库。
+//如果文件不存在，则会自动创建。
+//传入 nil 选项将导致 Bolt 使用默认选项打开数据库。
 func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	var db = &DB{opened: true}
 
@@ -183,6 +190,12 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	// if !options.ReadOnly.
 	// The database file is locked using the shared lock (more than one process may
 	// hold a lock at the same time) otherwise (options.ReadOnly is set).
+	// 锁定文件，使其他使用 Bolt 读写模式的进程无法访问同时使用数据库。
+	// 这将导致腐败，因为这两个进程将分别写入元页面和空闲页面。
+	// 数据库文件被独占锁定（只有一个进程可以抢到锁）
+	// 如果 !options.ReadOnly.
+	// 使用共享锁锁定数据库文件（多个进程可能
+	// 同时持有锁）否则（options.ReadOnly 已设置）。
 	if err := flock(db, mode, !db.readOnly, options.Timeout); err != nil {
 		_ = db.close()
 		return nil, err
@@ -201,6 +214,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		}
 	} else {
 		// Read the first meta page to determine the page size.
+		//阅读第一个元页面以确定页面大小。
 		var buf [0x1000]byte
 		if _, err := db.file.ReadAt(buf[:], 0); err == nil {
 			m := db.pageInBuffer(buf[:], 0).meta()
@@ -242,6 +256,8 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 // mmap opens the underlying memory-mapped file and initializes the meta references.
 // minsz is the minimum size that the new mmap can be.
+// mmap 打开底层内存映射文件并初始化元引用。
+// minsz 是新 mmap 的最小尺寸。
 func (db *DB) mmap(minsz int) error {
 	db.mmaplock.Lock()
 	defer db.mmaplock.Unlock()
@@ -305,6 +321,9 @@ func (db *DB) munmap() error {
 // mmapSize determines the appropriate size for the mmap given the current size
 // of the database. The minimum size is 32KB and doubles until it reaches 1GB.
 // Returns an error if the new mmap size is greater than the max allowed.
+//mmapSize 在给定当前大小的情况下确定 mmap 的适当大小
+//的数据库。最小大小为 32KB，然后翻倍直到达到 1GB。
+//如果新的 mmap 大小大于允许的最大值，则返回错误
 func (db *DB) mmapSize(size int) (int, error) {
 	// Double the size from 32KB until 1GB.
 	for i := uint(15); i <= 30; i++ {
@@ -456,6 +475,19 @@ func (db *DB) close() error {
 //
 // IMPORTANT: You must close read-only transactions after you are finished or
 // else the database will not reclaim old pages.
+// 开始一个新的事务。
+// 可以同时使用多个只读事务，但只能使用一个一次可以使用写事务。
+// 启动多个写事务将导致调用阻塞并被序列化，直到当前写入交易完成。
+//
+// 交易不应相互依赖。打开阅读同一个 goroutine 中的事务和写事务可能导致writer 死锁，
+// 因为数据库需要定期重新映射自身
+// 随着它的增长，当读取事务打开时它不能这样做。
+//
+// 如果长时间运行的读取事务（例如，快照事务）是
+// 需要，您可能希望将 DB.InitialMmapSize 设置为足够大的值
+// 以避免潜在的写事务阻塞。
+//
+// 重要提示：您必须在完成后关闭只读事务 或否则数据库将不会释放旧页。
 func (db *DB) Begin(writable bool) (*Tx, error) {
 	if writable {
 		return db.beginRWTx()
@@ -467,11 +499,17 @@ func (db *DB) beginTx() (*Tx, error) {
 	// Lock the meta pages while we initialize the transaction. We obtain
 	// the meta lock before the mmap lock because that's the order that the
 	// write transaction will obtain them.
+	//在我们初始化事务时锁定元页面。我们获得
+	//在 mmap 锁之前的元锁，因为那是
+	//写事务将获取它们。
 	db.metalock.Lock()
 
 	// Obtain a read-only lock on the mmap. When the mmap is remapped it will
 	// obtain a write lock so all transactions must finish before it can be
 	// remapped.
+	//获取 mmap 上的只读锁。当 mmap 被重新映射时，它将
+	//获得一个写锁，所以所有事务必须在它可以被完成之前完成
+	//重新映射。
 	db.mmaplock.RLock()
 
 	// Exit if the database is not open yet.
@@ -528,7 +566,9 @@ func (db *DB) beginRWTx() (*Tx, error) {
 	db.rwtx = t
 
 	// Free any pages associated with closed read-only transactions.
+	// 释放与已关闭的只读事务相关的任何页面。
 	var minid txid = 0xFFFFFFFFFFFFFFFF
+	// get min txid
 	for _, t := range db.txs {
 		if t.meta.txid < minid {
 			minid = t.meta.txid
@@ -789,12 +829,14 @@ func (db *DB) Info() *Info {
 }
 
 // page retrieves a page reference from the mmap based on the current page size.
+// page 根据当前页面大小从 mmap 中检索页面引用。
 func (db *DB) page(id pgid) *page {
 	pos := id * pgid(db.pageSize)
 	return (*page)(unsafe.Pointer(&db.data[pos]))
 }
 
 // pageInBuffer retrieves a page reference from a given byte array based on the current page size.
+// pageInBuffer 根据当前页面大小从给定字节数组中检索页面引用。
 func (db *DB) pageInBuffer(b []byte, id pgid) *page {
 	return (*page)(unsafe.Pointer(&b[id*pgid(db.pageSize)]))
 }
@@ -927,6 +969,7 @@ var DefaultOptions = &Options{
 }
 
 // Stats represents statistics about the database.
+// Stats 表示有关数据库的统计信息。
 type Stats struct {
 	// Freelist stats
 	FreePageN     int // total number of free pages on the freelist

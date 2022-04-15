@@ -30,7 +30,7 @@ type pgid uint64
 type page struct {
 	id       pgid
 	flags    uint16
-	count    uint16
+	count    uint16 // 包含node的数量
 	overflow uint32
 	ptr      uintptr
 }
@@ -61,6 +61,7 @@ func (p *page) leafPageElement(index uint16) *leafPageElement {
 }
 
 // leafPageElements retrieves a list of leaf nodes.
+// leafPageElements 检索叶节点列表。
 func (p *page) leafPageElements() []leafPageElement {
 	if p.count == 0 {
 		return nil
@@ -69,11 +70,13 @@ func (p *page) leafPageElements() []leafPageElement {
 }
 
 // branchPageElement retrieves the branch node by index
+// branchPageElement 按索引检索分支节点
 func (p *page) branchPageElement(index uint16) *branchPageElement {
 	return &((*[0x7FFFFFF]branchPageElement)(unsafe.Pointer(&p.ptr)))[index]
 }
 
 // branchPageElements retrieves a list of branch nodes.
+// branchPageElements 检索分支节点列表。
 func (p *page) branchPageElements() []branchPageElement {
 	if p.count == 0 {
 		return nil
@@ -94,6 +97,7 @@ func (s pages) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
+//branchPageElement 表示分支页面上的一个节点。
 type branchPageElement struct {
 	pos   uint32
 	ksize uint32
@@ -101,6 +105,7 @@ type branchPageElement struct {
 }
 
 // key returns a byte slice of the node key.
+// 返回节点键的字节切片。
 func (n *branchPageElement) key() []byte {
 	buf := (*[maxAllocSize]byte)(unsafe.Pointer(n))
 	return (*[maxAllocSize]byte)(unsafe.Pointer(&buf[n.pos]))[:n.ksize]

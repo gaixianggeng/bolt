@@ -21,6 +21,13 @@ type txid uint64
 // them. Pages can not be reclaimed by the writer until no more transactions
 // are using them. A long running read transaction can cause the database to
 // quickly grow.
+//Tx 表示数据库上的只读或读/写事务。
+//只读事务可用于检索键的值和创建游标。
+//读/写事务可以创建和删除存储桶以及创建和删除密钥。
+//
+// 重要提示：您必须在完成后提交或回滚事务他们。
+// 作者无法回收页面直到不再有事务使用它们
+// 正在使用它们。长时间运行的读取事务可能导致数据库快速成长。
 type Tx struct {
 	writable       bool
 	managed        bool
@@ -34,9 +41,16 @@ type Tx struct {
 	// WriteFlag specifies the flag for write-related methods like WriteTo().
 	// Tx opens the database file with the specified flag to copy the data.
 	//
-	// By default, the flag is unset, which works well for mostly in-memory
-	// workloads. For databases that are much larger than available RAM,
+	// By default, the flag is unset, which works well for mostly in-memory workloads.
+	// For databases that are much larger than available RAM,
 	// set the flag to syscall.O_DIRECT to avoid trashing the page cache.
+
+	//WriteFlag 为 WriteTo() 等与写入相关的方法指定标志。
+	//Tx 打开带有指定标志的数据库文件以复制数据。
+	//
+	//默认情况下，未设置该标志，这适用于大多数内存工作负载。
+	//对于比可用 RAM 大得多的数据库，
+	//将标志设置为 syscall.O_DIRECT 以避免破坏页面缓存
 	WriteFlag int
 }
 
@@ -55,6 +69,7 @@ func (tx *Tx) init(db *DB) {
 	*tx.root.bucket = tx.meta.root
 
 	// Increment the transaction id and add a page cache for writable transactions.
+	// 增加事务 id 并为可写事务添加页面缓存。
 	if tx.writable {
 		tx.pages = make(map[pgid]*page)
 		tx.meta.txid += txid(1)
@@ -141,6 +156,9 @@ func (tx *Tx) OnCommit(fn func()) {
 // Commit writes all changes to disk and updates the meta page.
 // Returns an error if a disk write error occurs, or if Commit is
 // called on a read-only transaction.
+//提交将所有更改写入磁盘并更新元页面。
+//如果发生磁盘写入错误，或者如果 Commit 是
+//调用只读事务。
 func (tx *Tx) Commit() error {
 	_assert(!tx.managed, "managed tx commit not allowed")
 	if tx.db == nil {
@@ -568,6 +586,8 @@ func (tx *Tx) writeMeta() error {
 
 // page returns a reference to the page with a given id.
 // If page has been written to then a temporary buffered page is returned.
+//page 返回对具有给定 id 的页面的引用。
+//如果页面已被写入，则返回一个临时缓冲页面。
 func (tx *Tx) page(id pgid) *page {
 	// Check the dirty pages first.
 	if tx.pages != nil {
