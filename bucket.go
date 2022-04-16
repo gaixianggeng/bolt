@@ -60,8 +60,8 @@ type Bucket struct {
 // header. In the case of inline buckets, the "root" will be 0.
 //bucket 表示存储桶的文件表示。
 //这被存储为存储桶键的“值”。如果桶足够小，
-//那么它的根页面可以内联存储在“值”中，在桶之后
-//标题。对于内联存储桶，“根”将为 0。
+//然后它的根页面可以内联存储在桶头之后的“值”中。对于内联存储桶，“根”将为 0。
+
 type bucket struct {
 	root     pgid   // page id of the bucket's root-level page // 桶的根页面的页面 id
 	sequence uint64 // monotonically incrementing, used by NextSequence() // 单调递增，由 NextSequence() 使用
