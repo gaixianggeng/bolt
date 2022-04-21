@@ -180,9 +180,9 @@ func (c *Cursor) seek(seek []byte) (key []byte, value []byte, flags uint32) {
 	if ref.index >= ref.count() {
 		return nil, nil, 0
 	}
-
 	// If this is a bucket then return a nil value.
-	return c.keyValue()
+	k, v, f := c.keyValue()
+	return k, v, f
 }
 
 // first moves the cursor to the first leaf element under the last page in the stack.

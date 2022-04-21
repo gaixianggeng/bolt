@@ -160,6 +160,7 @@ func (n *node) del(key []byte) {
 }
 
 // read initializes the node from a page.
+// 读取从页面初始化节点。
 func (n *node) read(p *page) {
 	n.pgid = p.id
 	n.isLeaf = ((p.flags & leafPageFlag) != 0)

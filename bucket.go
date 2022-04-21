@@ -188,7 +188,6 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 	// Move cursor to correct position.
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
-
 	// Return an error if there is an existing key.
 	if bytes.Equal(key, k) {
 		if (flags & bucketLeafFlag) != 0 {
@@ -323,9 +322,9 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 	// 存在的话 返回key的位置，不存在的话 seek到应该插入的位置
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
-
 	// Return an error if there is an existing key with a bucket value.
-	// 存在key，但是key和bucket的key相同 return err
+	// 存在key，
+	// 但是key和bucket的key相同 表示key和桶的key相等 return err
 	if bytes.Equal(key, k) && (flags&bucketLeafFlag) != 0 {
 		return ErrIncompatibleValue
 	}
@@ -333,7 +332,9 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 	// Insert into node.
 	key = cloneBytes(key)
 	c.node().put(key, key, value, 0, 0)
-
+	for _, node := range c.node().inodes {
+		fmt.Println("node:", string(node.key), string(node.value))
+	}
 	return nil
 }
 
@@ -639,6 +640,7 @@ func (b *Bucket) maxInlineBucketSize() int {
 }
 
 // write allocates and writes a bucket to a byte slice.
+// write 分配存储桶并将其写入字节片。
 func (b *Bucket) write() []byte {
 	// Allocate the appropriate size.
 	var n = b.rootNode
